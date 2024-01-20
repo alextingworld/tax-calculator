@@ -9,6 +9,10 @@ import { PassThrough } from "node:stream";
 import type { AppLoadContext, EntryContext } from "@remix-run/node";
 import { createReadableStreamFromReadable } from "@remix-run/node";
 import { RemixServer } from "@remix-run/react";
+import createEmotionServer from "@emotion/server/create-instance";
+import { CacheProvider as EmotionCacheProvider } from "@emotion/react";
+import createEmotionCache from "@emotion/cache";
+
 import { isbot } from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 
@@ -47,17 +51,25 @@ function handleBotRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    const emotionCache = createEmotionCache({ key: "css" });
+
     const { pipe, abort } = renderToPipeableStream(
-      <RemixServer
-        context={remixContext}
-        url={request.url}
-        abortDelay={ABORT_DELAY}
-      />,
+      <EmotionCacheProvider value={emotionCache}>
+        <RemixServer
+          context={remixContext}
+          url={request.url}
+          abortDelay={ABORT_DELAY}
+        />
+      </EmotionCacheProvider>,
       {
         onAllReady() {
           shellRendered = true;
           const body = new PassThrough();
+          const emotionServer = createEmotionServer(emotionCache);
           const stream = createReadableStreamFromReadable(body);
+
+          const bodyWithStyles = emotionServer.renderStylesToNodeStream();
+          body.pipe(bodyWithStyles);
 
           responseHeaders.set("Content-Type", "text/html");
 
@@ -97,16 +109,25 @@ function handleBrowserRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    const emotionCache = createEmotionCache({ key: "css" });
+
     const { pipe, abort } = renderToPipeableStream(
-      <RemixServer
-        context={remixContext}
-        url={request.url}
-        abortDelay={ABORT_DELAY}
-      />,
+      <EmotionCacheProvider value={emotionCache}>
+        <RemixServer
+          context={remixContext}
+          url={request.url}
+          abortDelay={ABORT_DELAY}
+        />
+      </EmotionCacheProvider>,
       {
         onShellReady() {
           shellRendered = true;
           const body = new PassThrough();
+          const emotionServer = createEmotionServer(emotionCache);
+
+          const bodyWithStyles = emotionServer.renderStylesToNodeStream();
+          body.pipe(bodyWithStyles);
+
           const stream = createReadableStreamFromReadable(body);
 
           responseHeaders.set("Content-Type", "text/html");

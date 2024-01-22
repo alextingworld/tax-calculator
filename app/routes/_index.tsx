@@ -1,4 +1,4 @@
-import { SetStateAction, useState, useEffect } from "react";
+import { SetStateAction, useState, useEffect, isValidElement } from "react";
 import type { MetaFunction } from "@remix-run/node";
 import {
   Badge,
@@ -13,8 +13,9 @@ import {
   StatLabel,
   StatNumber,
   Text,
-  // separate
+  // table
   Card,
+  TableContainer,
   Table,
   Thead,
   Tbody,
@@ -22,10 +23,19 @@ import {
   Tr,
   Th,
   Td,
-  TableContainer,
 } from "@chakra-ui/react";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 
-import { calculateFederalDepreciation } from "~/utils/taxCalculation";
+import { addArrays } from "~/utils/arrayHelpers";
+import {
+  calculateFederalDepreciation,
+  calculateStateDepreciation,
+} from "~/utils/taxCalculation";
 
 export const meta: MetaFunction = () => {
   return [
@@ -35,17 +45,14 @@ export const meta: MetaFunction = () => {
 };
 
 type IncomeType = "capital-gains" | "ordinary-income";
-
 interface StateTaxRate {
   "capital-gains": number;
   "ordinary-income": number;
 }
-
 const FEDERAL_TAX_RATE: Record<IncomeType, number> = {
   "capital-gains": 0.2,
   "ordinary-income": 0.37,
 };
-
 const STATE_TAX_RATE: Record<string, StateTaxRate> = {
   Alabama: { "capital-gains": 0.05, "ordinary-income": 0.05 },
   Alaska: { "capital-gains": 0.0, "ordinary-income": 0.0 },
@@ -98,8 +105,76 @@ const STATE_TAX_RATE: Record<string, StateTaxRate> = {
   Wisconsin: { "capital-gains": 0.0765, "ordinary-income": 0.0765 },
   Wyoming: { "capital-gains": 0.0, "ordinary-income": 0.0 },
 };
+const DEFAULT_ITC = 606.2;
 
-const ITC_RATE = 0.3;
+type AnnualReturn = {
+  year: number;
+  ITC: number;
+  depreciationTaxShield: number;
+  fixedPayment: number;
+  totalCashFlow: number;
+};
+
+const defaultData: AnnualReturn[] = [
+  {
+    year: 1,
+    ITC: DEFAULT_ITC,
+    depreciationTaxShield: 0,
+    fixedPayment: 15.0,
+    totalCashFlow: 621.2,
+  },
+  {
+    year: 2,
+    ITC: 0,
+    depreciationTaxShield: 0,
+    fixedPayment: 15.0,
+    totalCashFlow: 15,
+  },
+  {
+    year: 3,
+    ITC: 0,
+    depreciationTaxShield: 0,
+    fixedPayment: 15.0,
+    totalCashFlow: 15,
+  },
+  {
+    year: 4,
+    ITC: 0,
+    depreciationTaxShield: 0,
+    fixedPayment: 15.0,
+    totalCashFlow: 15,
+  },
+  {
+    year: 5,
+    ITC: 0,
+    depreciationTaxShield: 0,
+    fixedPayment: 15.0,
+    totalCashFlow: 15,
+  },
+];
+
+const columnHelper = createColumnHelper<AnnualReturn>();
+
+const columns = [
+  columnHelper.accessor("year", {
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("ITC", {
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("depreciationTaxShield", {
+    header: "Depreciation Tax Shield",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("fixedPayment", {
+    header: "Fixed Payment",
+    cell: (info) => info.getValue(),
+  }),
+  columnHelper.accessor("totalCashFlow", {
+    header: "Total Cash Flow",
+    cell: (info) => info.getValue(),
+  }),
+];
 
 export default function Index() {
   const [incomeType, setIncomeType] = useState<IncomeType | "">("");
@@ -107,19 +182,20 @@ export default function Index() {
   const [stateTaxRate, setStateTaxRate] = useState<number | null>(null);
   const [federalTaxRate, setFederalTaxRate] = useState<number | null>(null);
   const [federalDepreciation, setFederalDepreciation] = useState<[]>([]);
+  const [stateDepreciation, setStateDepreciation] = useState<[]>([]);
+
+  const [data, setData] = useState(() => [...defaultData]);
 
   useEffect(() => {
     if (state && incomeType) {
       setStateTaxRate(STATE_TAX_RATE[state][incomeType]);
     }
   }, [state, incomeType]);
-
   useEffect(() => {
     if (incomeType) {
       setFederalTaxRate(FEDERAL_TAX_RATE[incomeType]);
     }
   }, [incomeType]);
-
   useEffect(() => {
     if (federalTaxRate) {
       setFederalDepreciation(
@@ -127,6 +203,39 @@ export default function Index() {
       );
     }
   }, [federalTaxRate]);
+  useEffect(() => {
+    if (stateTaxRate) {
+      setStateDepreciation(
+        calculateStateDepreciation(stateTaxRate) as SetStateAction<[]>
+      );
+    }
+  }, [stateTaxRate]);
+  useEffect(() => {
+    // Combine federal and state depreciation arrays
+    const newDepreciationTaxShield = addArrays(
+      federalDepreciation,
+      stateDepreciation
+    );
+    // Update the table data with the new depreciationTaxShield values
+    const newData = data.map((item, index) => {
+      const ITC = typeof item.ITC === "number" ? item.ITC : 0;
+      const fixedPayment =
+        typeof item.fixedPayment === "number" ? item.fixedPayment : 0;
+
+      const depreciationTaxShield = newDepreciationTaxShield[index] || 0;
+
+      const totalCashFlow =
+        (newDepreciationTaxShield[index] || 0) + fixedPayment + ITC;
+
+      return {
+        ...item,
+        depreciationTaxShield, // Default to 0 if the array doesn't have a value at this index
+        totalCashFlow,
+      };
+    });
+
+    setData(newData);
+  }, [federalDepreciation, stateDepreciation]);
 
   const handleIncomeTypeChange = (e: {
     target: { value: SetStateAction<string> };
@@ -141,13 +250,16 @@ export default function Index() {
 
   const federalTaxRateDisplay =
     federalTaxRate !== null ? `${federalTaxRate * 100}%` : "0%";
-
   const stateTaxRateDisplay =
     stateTaxRate !== null ? `${(stateTaxRate * 100).toFixed(2)}%` : "0%";
-
   const states = Object.keys(STATE_TAX_RATE);
 
-  console.log(federalDepreciation);
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   return (
     <Box bg="#fff" w="100%" p={4} color="#2D3748">
       <Heading as="h1" size="lg" mb={1}>
@@ -224,52 +336,61 @@ export default function Index() {
           <TableContainer>
             <Table variant="striped" colorScheme="gray">
               <Thead>
-                <Tr>
-                  <Th>Year</Th>
-                  <Th>ITC</Th>
-                  <Th isNumeric>Depreciation Tax Shield</Th>
-                  <Th isNumeric>Fixed Payment</Th>
-                  <Th isNumeric>Total Cash Flow</Th>
-                </Tr>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <Tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <Th key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                      </Th>
+                    ))}
+                  </Tr>
+                ))}
               </Thead>
               <Tbody>
-                <Tr>
-                  <Td>1</Td>
-                  <Td isNumeric>{ITC_RATE * 1000}</Td>
-                  <Td isNumeric>$485.9</Td>
-                  <Td isNumeric>$15.0</Td>
-                  <Td isNumeric>$1,107.1</Td>
-                </Tr>
-                <Tr>
-                  <Td>2</Td>
-                  <Td>-</Td>
-                  <Td isNumeric>167.3</Td>
-                  <Td isNumeric>15.0</Td>
-                  <Td isNumeric>182.3</Td>
-                </Tr>
-                <Tr>
-                  <Td>3</Td>
-                  <Td>-</Td>
-                  <Td isNumeric>100.4</Td>
-                  <Td isNumeric>15.0</Td>
-                  <Td isNumeric>115.4</Td>
-                </Tr>
-                <Tr>
-                  <Td>4</Td>
-                  <Td>-</Td>
-                  <Td isNumeric>60.2</Td>
-                  <Td isNumeric>15.0</Td>
-                  <Td isNumeric>75.2</Td>
-                </Tr>
-                <Tr>
-                  <Td>5</Td>
-                  <Td>-</Td>
-                  <Td isNumeric>60.2</Td>
-                  <Td isNumeric>15.0</Td>
-                  <Td isNumeric>75.2</Td>
-                </Tr>
+                {table.getRowModel().rows.map((row) => (
+                  <Tr key={row.id}>
+                    {row.getVisibleCells().map((cell) => {
+                      const cellValue = flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      );
+                      let cellValueDisplay = "";
+                      console.log(cell.getContext());
+                      if (
+                        isValidElement(cellValue) &&
+                        cell.getContext().column.id !== "year"
+                      ) {
+                        cellValueDisplay =
+                          cellValue.props.getValue() === 0
+                            ? "-"
+                            : cellValue.props.getValue().toFixed(1);
+                        if (
+                          cell.id === "0_ITC" ||
+                          cell.id === "0_depreciationTaxShield" ||
+                          cell.id === "0_fixedPayment" ||
+                          cell.id === "0_totalCashFlow"
+                        ) {
+                          cellValueDisplay = `$${cellValue.props
+                            ?.getValue()
+                            .toFixed(1)}`;
+                        }
+                      }
+
+                      return (
+                        <Td isNumeric key={cell.id}>
+                          {cellValueDisplay || cellValue || "-"}
+                        </Td>
+                      );
+                    })}
+                  </Tr>
+                ))}
               </Tbody>
-              <Tfoot>
+              {/* <Tfoot>
                 <Tr>
                   <Th>Total</Th>
                   <Th isNumeric>$606.2</Th>
@@ -277,7 +398,7 @@ export default function Index() {
                   <Th isNumeric>$75.0</Th>
                   <Th isNumeric>$1,555.3</Th>
                 </Tr>
-              </Tfoot>
+              </Tfoot> */}
             </Table>
           </TableContainer>
         </Card>

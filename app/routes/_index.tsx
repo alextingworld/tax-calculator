@@ -154,7 +154,6 @@ const defaultData: AnnualReturn[] = [
 ];
 
 const columnHelper = createColumnHelper<AnnualReturn>();
-
 const columns = [
   columnHelper.accessor("year", {
     cell: (info) => info.getValue(),
@@ -259,6 +258,11 @@ export default function Index() {
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
+  const sumColumn = (key: keyof AnnualReturn) =>
+    data.reduce((sum, row) => sum + (row[key] || 0), 0);
+  const totalCashFlow = sumColumn("totalCashFlow");
+  const investment = 1000;
+  const percentageIncrease = ((totalCashFlow - investment) / investment) * 100;
 
   return (
     <Box bg="#fff" w="100%" p={4} color="#2D3748">
@@ -325,10 +329,12 @@ export default function Index() {
         <Divider orientation="horizontal" mb={4} />
         <Stat mb={6}>
           <StatLabel>5-Year Return</StatLabel>
-          <StatNumber>$1,555.3</StatNumber>
+          <StatNumber>${totalCashFlow.toFixed(1)}</StatNumber>
           <StatHelpText>
-            <StatArrow type="increase" />
-            55.53%
+            <StatArrow
+              type={percentageIncrease >= 0 ? "increase" : "decrease"}
+            />
+            {percentageIncrease.toFixed(2)}%
           </StatHelpText>
         </Stat>
 
@@ -390,15 +396,21 @@ export default function Index() {
                   </Tr>
                 ))}
               </Tbody>
-              {/* <Tfoot>
+              <Tfoot>
                 <Tr>
                   <Th>Total</Th>
-                  <Th isNumeric>$606.2</Th>
-                  <Th isNumeric>$874.1</Th>
-                  <Th isNumeric>$75.0</Th>
-                  <Th isNumeric>$1,555.3</Th>
+                  <Th isNumeric>{`$${sumColumn("ITC").toFixed(1)}`}</Th>
+                  <Th isNumeric>
+                    {`$${sumColumn("depreciationTaxShield").toFixed(1)}`}
+                  </Th>
+                  <Th isNumeric>{`$${sumColumn("fixedPayment").toFixed(
+                    1
+                  )}`}</Th>
+                  <Th isNumeric>{`$${sumColumn("totalCashFlow").toFixed(
+                    1
+                  )}`}</Th>
                 </Tr>
-              </Tfoot> */}
+              </Tfoot>
             </Table>
           </TableContainer>
         </Card>

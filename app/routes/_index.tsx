@@ -366,7 +366,6 @@ export default function Index() {
                         cell.getContext()
                       );
                       let cellValueDisplay = "";
-                      console.log(cell.getContext());
                       if (
                         isValidElement(cellValue) &&
                         cell.getContext().column.id !== "year"
